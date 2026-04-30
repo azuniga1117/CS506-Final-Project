@@ -392,8 +392,12 @@ Side-by-side bars: R² for demographics-only model (0.0172) vs. full model (0.08
 **1. Feature Importance Bar Chart**  
 Horizontal bars for all 10 features sorted descending, from `route_historical_avg_delay` (0.4336) to `pct_minority` (0.0063). The central equity finding: historical delay patterns and service reliability metrics dominate prediction, while demographic features combined account for under 2% of importance — suggesting delay is structurally embedded in route operations.
 
+<img width="1324" height="721" alt="rf_feature_importance" src="https://github.com/user-attachments/assets/fa3f81fa-8d88-4cd0-83c0-5691c7d7b05f" />
+
 **2. Correlation Heatmap — Features and Response**  
 Pearson correlation matrix across all 8 numeric features and `avg_delay`. `route_historical_avg_delay` shows the strongest correlation (r = 0.566). Demographic features show weak *negative* correlations with `avg_delay` (`pct_low_income` r = −0.105, `pct_minority` r = −0.067) — the same counter-intuitive direction seen in the linear regression, likely due to confounding with route characteristics.
+
+<img width="1675" height="1172" alt="rf_correlation_heatmap" src="https://github.com/user-attachments/assets/dd647040-34de-436b-a4cd-f1f44065ddea" />
 
 ---
 
