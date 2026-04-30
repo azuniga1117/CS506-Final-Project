@@ -348,17 +348,32 @@ All plots generated inline in the respective notebooks.
 **1. Feature Importance (Mean Gain)**  
 Horizontal bar chart of each feature's mean gain importance score, sorted ascending. Reveals where demographic features (`pct_low_income`, `pct_minority`) rank relative to operational features — the primary equity diagnostic for the XGBoost model.
 
+<img width="884" height="584" alt="Unknown-10" src="https://github.com/user-attachments/assets/862d7fd3-1a4a-47d0-875e-b8a673c24159" />
+
+
 **2. SHAP Summary Plot**  
 Mean absolute SHAP values for a 5,000-row random sample of the test set. Unlike raw importances, SHAP values are additive and locally faithful — they show not just which features matter, but the direction of their effect. Comparable across models (e.g., vs. Random Forest importances).
+
+<img width="784" height="853" alt="Unknown-11" src="https://github.com/user-attachments/assets/658b0749-3d53-4faa-8d09-9de8a5938dde" />
+
 
 **3. Average Delay by Hour of Day**  
 Line plot of mean and median `avg_delay_min` by hour (0–23) with ±1 std shaded band. Reveals the intra-day delay profile and whether AM/PM peaks show elevated delay. Wide std bands at peak hours indicate heterogeneous route behavior.
 
+<img width="1084" height="484" alt="Unknown-12" src="https://github.com/user-attachments/assets/9ebc3610-b1aa-4ee4-80da-05a3967d9b18" />
+
+
 **4. Adjusted R² Forward-Selection Chart**  
 Two-panel: (left) CV Test R², Train R², and Adjusted R² as feature groups are added cumulatively; (right) Train-Test Gap bars (red if gap > 0.05). Directly exposes which feature groups improve generalization vs. inflate in-sample fit — the key overfitting diagnostic.
 
+<img width="884" height="484" alt="Unknown-13" src="https://github.com/user-attachments/assets/ef146fa3-3648-48ae-b933-2c7e5403c85a" />
+
+
 **5. Title VI Equity Scatter — Delay vs. Demographics**  
 Side-by-side scatter plots: mean `avg_delay_min` vs. Title VI Low-Income % (left) and vs. Title VI Minority % (right), with trend lines and route ID labels. A positive slope would indicate that routes serving more low-income or minority riders experience systematically longer delays — the quantitative update to the "64 Hours" finding.
+
+<img width="1382" height="608" alt="Unknown-14" src="https://github.com/user-attachments/assets/472d6475-cd47-430d-8949-1a09bc59d8ec" />
+
 
 ---
 
