@@ -331,7 +331,7 @@ The six numeric predictors entered the model without scaling (OLS coefficients a
 | Naive Baseline | *[fill]* | *[fill]* | 0.000 | Always predicts mean delay |
 | Linear Regression (full, p=41) | — | 355.42 sec | 0.0893 (adj: 0.0891) | Trip-level; OLS; interpretable coefficients; F-test; multicollinearity flagged |
 | Random Forest (p=10, n=226) | 77.47 sec | 107.37 sec | 0.4604 (adj: 0.4353) | Route-level; highest R²; `route_historical_avg_delay` dominates at 43.4%; demographic features < 1% importance |
-| XGBoost | 107.76 sec | 165 sec | 0.616 | Route-stop-hour level; SHAP interpretability; forward adjusted-R² overfitting check |
+| XGBoost | 107.76 sec | 165 sec | 0.616 (adj: 0.6110) | Route-stop-hour level; SHAP interpretability; forward adjusted-R² overfitting check |
 
 > ⚠️ **Note on comparability:** The three models operate at different levels of aggregation (trip-level vs. route-level vs. route-stop-hour-level), so their R² and RMSE values are not directly comparable — each model explains variance at its own unit of analysis. The key cross-model finding is that demographic features rank low in importance across all three models, consistent with the interpretation that delay is structurally embedded in route operations rather than simply correlated with ridership demographics.
 
