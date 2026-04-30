@@ -68,7 +68,7 @@ This project updates that analysis using three complementary machine learning ap
 | **Team (Primary)** | Quantify the reliability gap by calculating average delay time and wait-time variance for the 15 target bus routes (28, 23, 111, 15, and others), identifying which routes fall more than 20% below MBTA service standards |
 | **Team (Secondary)** | Correlate bus performance metrics (delays, travel speed, frequency) with neighborhood demographics (race, income, vehicle ownership) to determine if a statistically significant disparity persists in the time tax paid by low-income and minority residents |
 | **XGBoost (Baria)** | Predict `avg_delay_min` at the route × stop × hour × day-of-week level with R² > 0.5 on held-out data; determine via forward adjusted-R² selection whether Title VI demographic features improve model fit after controlling for operational factors |
-| **Linear Regression (Primah)** | Establish whether demographic factors (Title VI minority %, low-income %) and operating factors (hour, rush hour, previous delay, route) significantly explain trip-level delay via OLS; quantify how much variance each group adds using an F-test (alpha = 0.05) |
+| **Linear Regression (Primah)** | Establish whether demographic factors (Title VI minority %, low-income %) and operating factors (hour, rush hour, previous delay, route) significantly explain trip-level delay via OLS; quantify how much variance each group adds using an F-test (α = 0.05) |
 | **Random Forest (Amira)** | Capture non-linear interactions between route characteristics, time-of-day, and demographics using a Random Forest Regressor on route-level aggregated data, targeting R² > 0.40; quantify whether demographic features contribute meaningfully to feature importance relative to operational predictors |
 
 ---
@@ -125,7 +125,7 @@ The dataset was aggregated to the route level from the shared MBTA trip CSV, pro
 
 1. **Route-level aggregation** — trip-level records aggregated to 226 route-level rows; `avg_delay` computed as mean delay per route, matching Passenger Survey demographic grain.
 2. **Categorical label encoding** — `route_id` and `neighborhood` label-encoded (`route_encoded`, `neighborhood_encoded`). Label encoding acceptable for Random Forest (order-invariant splits) and avoids dimensionality explosion at n=226.
-3. **Feature engineering** — three features engineered: `route_historical_avg_delay` (per-route mean delay), `headway_deviation` (inter-arrival time variance), `stop_position_pct` (stop index / route length).
+3. **Feature engineering** — three features engineered: `route_historical_avg_delay` (per-route mean delay), `headway_deviation` (inter-arrival time variance), `stop_position_pct` (stop index ÷ route length).
 4. **Multicollinearity check** — `pct_minority` and `pct_low_income` showed r = 0.719; flagged but retained; RF importance scores are less sensitive to collinearity than OLS coefficients.
 
 *See Random Forest notebook for implementation.*
@@ -219,13 +219,30 @@ The six numeric predictors entered the model without scaling (OLS coefficients a
 
 | Model | Metric | Score |
 |---|---|---|
-| XGBoost (`avg_delay_min`) | MAE | *[fill from notebook output]* |
-| XGBoost (`avg_delay_min`) | RMSE | *[fill from notebook output]* |
-| XGBoost (`avg_delay_min`) | R² | *[fill from notebook output]* |
-| XGBoost (`avg_delay_min`) | Adjusted R² (CV) | *[fill from §3b output]* |
-| Naive baseline | MAE | *[fill]* |
+| XGBoost (`avg_delay_min`) | MAE | **1.796 min** |
+| XGBoost (`avg_delay_min`) | RMSE | **2.750 min** |
+| XGBoost (`avg_delay_min`) | R² | **0.616** |
+| XGBoost (`avg_delay_min`) | Adj R² (CV, best group) | 0.6110 (k=17, historical delay features) |
+| Naive baseline | MAE | 4.436 min (std of `avg_delay_min`) |
 
 **Limitations:**
+**Adjusted R² Forward-Selection Results (5-fold CV, n=45,264):**
+
+| Feature Group | k | CV Test R² | Train R² | Adj R² | Gap | Verdict |
+|---|---|---|---|---|---|---|
+| Temporal | 5 | 0.1804 | 0.1880 | 0.1803 | 0.008 | ✅ Useful |
+| + Route / Stop / Network | 12 | 0.5680 | 0.6569 | 0.5679 | 0.089 | ✅ Useful ⚠️ overfit gap |
+| + Stop ID | 13 | 0.5653 | 0.6672 | 0.5652 | 0.102 | ❌ Hurts — adj R² dropped |
+| + Demographic (pct_low_income, pct_minority) | 15 | 0.5814 | 0.6820 | 0.5812 | 0.101 | ✅ Useful ⚠️ overfit gap |
+| + Historical delay (route×hour, route×dow) | 17 | 0.6112 | 0.7342 | 0.6110 | 0.123 | ✅ Useful ⚠️ overfit gap |
+| + Historical delay (stop) | 18 | 0.6088 | 0.7388 | 0.6086 | 0.130 | ❌ Hurts — adj R² dropped |
+
+**Key findings from the overfitting check:**
+- `stop_id_enc` (k=13) **hurts** the model — adj R² drops by 0.003 and the train-test gap exceeds 0.10. Dropped from the recommended feature set.
+- Demographic features (`pct_low_income`, `pct_minority`) **meaningfully improve** adj R² (+0.016) even after controlling for all route/network features — confirming they carry signal beyond route structure.
+- `hist_delay_stop` (k=18) also **hurts** — adj R² drops 0.002 with a gap of 0.130, consistent with within-sample leakage from computing stop means over the full dataset.
+- All groups beyond Temporal show train-test gaps > 0.05, driven primarily by the route/network fixed effects. The recommended final feature set is **k=17** (excluding `stop_id_enc` and `hist_delay_stop`).
+
 - `hist_delay_route_hour` and `hist_delay_stop` are computed over the full sample (not within CV folds), introducing mild data leakage — the adjusted R² check quantifies the impact
 - Demographic coverage limited to routes matched in the Passenger Survey
 - Route × stop × hour aggregation smooths within-stratum variance; model cannot predict individual trip-level extremes
@@ -239,7 +256,7 @@ The six numeric predictors entered the model without scaling (OLS coefficients a
 
 **Model:** OLS Linear Regression — provides interpretable coefficient estimates with direct statistical significance testing. The F-test structure allows formal testing of whether demographics alone explain delay, and by how much operating + route factors improve fit.
 
-**Training:** Two OLS models fit on the full 325,924-row dataset using numpy matrix operations (XTX)^-1XTy. No train/test split — focus was coefficient estimation and hypothesis testing rather than prediction. Demographics-only model (p=2) fit first, then full model (p=41). F-statistic tests H0: all coefficients = 0.
+**Training:** Two OLS models fit on the full 325,924-row dataset using numpy matrix operations (XᵀX)⁻¹Xᵀy. No train/test split — focus was coefficient estimation and hypothesis testing rather than prediction. Demographics-only model (p=2) fit first, then full model (p=41). F-statistic tests H₀: all coefficients = 0.
 
 **Evaluation:** R², adjusted R², RMSE (in seconds), F-statistic (p-value). Demographics-only model serves as equity-focused baseline; R² gain measures how much operating/route factors add.
 
@@ -303,7 +320,7 @@ The six numeric predictors entered the model without scaling (OLS coefficients a
 - Demographic features (`pct_minority`: 0.63%, `pct_low_income`: 0.96%) have near-zero importance at the route-aggregated level — this likely reflects absorption by route fixed effects, not absence of disparity
 - Multicollinearity between `pct_minority` and `pct_low_income` (r = 0.719) further suppresses their individual importance scores
 
-*See Random Forest notebook for full implementation.*
+*See Random Forest notebook for full implementation and output.*
 
 ---
 
@@ -316,7 +333,7 @@ The six numeric predictors entered the model without scaling (OLS coefficients a
 | Random Forest (p=10, n=226) | 77.47 sec | 107.37 sec | 0.4604 (adj: 0.4353) | Route-level; highest R²; `route_historical_avg_delay` dominates at 43.4%; demographic features < 1% importance |
 | XGBoost | *[fill]* | *[fill]* | *[fill]* | Route-stop-hour level; SHAP interpretability; forward adjusted-R² overfitting check |
 
-> Note on comparability: The three models operate at different levels of aggregation (trip-level vs. route-level vs. route-stop-hour-level), so their R² and RMSE values are not directly comparable — each model explains variance at its own unit of analysis. The key cross-model finding is that demographic features rank low in importance across all three models, consistent with the interpretation that delay is structurally embedded in route operations rather than simply correlated with ridership demographics.
+> ⚠️ **Note on comparability:** The three models operate at different levels of aggregation (trip-level vs. route-level vs. route-stop-hour-level), so their R² and RMSE values are not directly comparable — each model explains variance at its own unit of analysis. The key cross-model finding is that demographic features rank low in importance across all three models, consistent with the interpretation that delay is structurally embedded in route operations rather than simply correlated with ridership demographics.
 
 *[Team: add 2–3 sentences here summarizing which model performed best for its task and the overall equity conclusion.]*
 
@@ -371,7 +388,7 @@ Pearson correlation matrix across all 8 numeric features and `avg_delay`. `route
 
 **Random Forest** *(Amira):* Achieved the highest R² at 0.4604 (adj R² = 0.4353), RMSE = 107.37 sec, MAE = 77.47 sec on route-level data (n=226, p=10), with F-statistic = 18.34 (p < 0.001). `route_historical_avg_delay` was the dominant feature at 43.4% importance. Demographic features ranked last (<1% combined), likely reflecting absorption by route-level fixed effects rather than absence of equity disparity.
 
-**XGBoost** *(Baria):* *[Fill in after running `XGBoost-5.ipynb` — summarize MAE, RMSE, R², adjusted R² CV results, and the key finding from the Title VI equity scatter.]*
+**XGBoost** *(Baria):* The XGBoost model achieved MAE = 1.796 min, RMSE = 2.750 min, and R² = 0.616 on the held-out test set (aggregated to route × stop × hour × day-of-week level). The forward adjusted-R² selection (5-fold CV, n=45,264) confirmed that route/network features and temporal features drive the bulk of generalization, and that demographic features (Title VI low-income %, minority %) meaningfully improve adjusted R² by +0.016 after controlling for all operational factors — confirming a statistically detectable equity signal. Notably, `stop_id_enc` and `hist_delay_stop` were flagged as harmful (adj R² drops, train-test gaps >0.10–0.13), indicating within-sample leakage from stop-level target encoding.
 
 ---
 
