@@ -287,7 +287,7 @@ The six numeric predictors entered the model without scaling — OLS coefficient
 **Limitations:**
 
 - Full model explains only 8.9% of trip-level delay variance — weather, incidents, and real-time traffic are unobserved
-- Multicollinearity between `pct_minority` and `pct_lowincome` (r = 0.815) makes the joint coefficients unstable; in particular, the `pct_lowincome` coefficient flips sign between the alone fit (−563.5 sec/unit) and the joint fit (+50.7), and neither demographic coefficient should be interpreted in isolation from the alone-vs-joint comparison (Visualization 5)
+- Multicollinearity between `pct_minority` and `pct_lowincome` (r = 0.815) makes the joint coefficients unstable. From the alone-vs-joint comparison (Visualization 5): `pct_minority` shrinks from −237.99 alone to −37.09 jointly, and `pct_lowincome` shrinks from −504.14 alone to −449.45 jointly. Neither demographic coefficient should be interpreted in isolation from this comparison
 - The residual distribution is heavy-tailed (closer to Laplace than Normal) rather than homoscedastic, so standard errors are approximate and the model fits typical trips well but extreme delays poorly (visible in the predicted-vs-actual plot)
 - No interaction terms; model cannot detect whether rush-hour penalties or previous-delay propagation differ by demographic group
 
@@ -376,15 +376,32 @@ Side-by-side scatter plots: mean `avg_delay_min` vs. Title VI Low-Income % (left
 
 
 ---
-
 ### Linear Regression Visualizations *(Primah Muwanga)*
 
-**1. Correlation Heatmap of Numeric Predictors**  
-Pearson correlation matrix across all 7 numeric variables, color-coded. Surfaces the critical multicollinearity between `pct_minority` and `pct_lowincome` (r = 0.815) and shows that `prev_delay` is the strongest numeric predictor of `delay_seconds` (r = 0.206).
+**1. Coefficient Plot — Numeric Predictors**
+Horizontal bar chart of the six numeric-predictor coefficients from the full route-FE model, color-coded by sign (red = positive, blue = negative) with values labeled in seconds of delay per unit increase. Shows `is_rush_hour` (+39.5 sec) and the joint demographic coefficients as the visually dominant effects, while operating coefficients like `hour` (+3.6) and `prev_delay` (+0.15) are smaller per unit but cumulatively meaningful across their ranges.
 
-**2. R² Comparison — Demographics-Only vs. Full Model**  
-Side-by-side bars: R² for demographics-only model (0.0172) vs. full model (0.0893), with the +7.2 pp delta labeled. Directly quantifies how much operational and route structure adds beyond demographic factors alone — the demographics-only model explains less than 2% of variance.
+<img width="900" height="500" alt="viz_coefficients" src="PASTE_URL_1_HERE" />
 
+**2. Demographics vs. Average Delay — Route-Level Scatter**
+Two side-by-side scatter plots, one route per dot, with `pct_minority` and `pct_lowincome` on the x-axes and route-level mean delay on the y-axis. Red OLS fit lines with shaded 95% confidence bands. Both relationships have *negative* slopes — routes serving more minority and low-income riders have lower average delays at the route level — directly contradicting the naive "minority routes are slower" prediction. Headline equity finding for the linear regression.
+
+<img width="1300" height="500" alt="viz_demographics_scatter" src="PASTE_URL_2_HERE" />
+
+**3. Predicted vs. Actual Trip Delay**
+Scatter of 5,000 randomly sampled trips with actual delay on the x-axis, model-predicted delay on the y-axis, and the y = x diagonal in red. Title labels both R² (0.089) and RMSE (355 sec). The central cluster sits roughly along the diagonal — typical trips are reasonably well predicted — but the model fails on extreme delays in both directions: heavily late buses (>1000 seconds actual) are predicted near zero. Visual confirmation that the model is calibrated for typical service, not the tail events most consequential for rider equity.
+
+<img width="800" height="700" alt="viz_pred_vs_actual" src="PASTE_URL_3_HERE" />
+
+**4. Residual Distribution**
+Histogram of residuals (actual − predicted) with KDE overlay, x-axis clipped to ±1500 to show the bulk distribution. Residuals are roughly symmetric around zero (supporting unbiasedness of OLS estimates) but exhibit heavy tails consistent with a Laplace rather than Normal distribution. Heavy tails serve as a caveat on the parametric inference assumptions underlying OLS standard errors and p-values.
+
+<img width="900" height="500" alt="viz_residuals" src="PASTE_URL_4_HERE" />
+
+**5. Demographic Coefficients — Alone vs. Joint Fit**
+Grouped bar chart comparing each demographic coefficient when fit alone (blue, with operating controls only) versus jointly with the other demographic (red). Direct evidence of multicollinearity (r = 0.815): `pct_lowincome` shifts from −504 sec/unit alone to −449 jointly, and `pct_minority` shifts from −238 alone to −37 jointly. The two variables share enough explanatory power that neither joint coefficient is interpretable in isolation — the "alone" estimates are the stable, defensible numbers and are what's reported in the Summary of Results.
+
+<img width="900" height="450" alt="viz_single_vs_joint" src="PASTE_URL_5_HERE" />
 ---
 
 ### Random Forest Visualizations *(Amira Zuniga)*
@@ -403,7 +420,7 @@ Pearson correlation matrix across all 8 numeric features and `avg_delay`. `route
 
 ### Summary of Results
 
-**Linear Regression** *(Primah):* The full OLS model (p=41) achieved R² = 0.0893 and RMSE = 355.42 sec, with F-statistic = 778.98 (p < 0.001), confirming at least one predictor significantly explains trip-level delay. A demographics-only model explained only 1.7% of variance; adding operating and route factors contributed an additional 7.2 percentage points. Both demographic coefficients were negative in the full model — counter to the expected equity direction — but this is likely due to multicollinearity (r = 0.815) and confounding with route fixed effects, and should not be interpreted as evidence of better service for minority or low-income riders.
+**Linear Regression** *(Primah):* The full OLS model (p=41) achieved R² = 0.0893 and RMSE = 355.42 sec, with F-statistic = 779.0 (p < 0.001), confirming at least one predictor significantly explains trip-level delay. A demographics-only model explained only 1.7% of variance; adding operating and route factors contributed an additional 7.2 percentage points. A separate partial F-test (operating + demographics vs. operating only) yielded F(2, 325917) = 1848.10, p < 0.001, with R² rising from 0.0479 to 0.0586 — rejecting the null hypothesis that demographics add no explanatory power beyond operating factors. The single-predictor refits (Visualization 5) gave the stable demographic estimates: `pct_minority` alone = −237.99 sec/unit, `pct_lowincome` alone = −504.14 sec/unit. Both negative, meaning routes serving more disadvantaged riders show *lower* average delays, a direction opposite to the naive "time tax" prediction, likely because route fixed effects absorb the structural disparity into route-level baselines.
 
 **Random Forest** *(Amira):* Achieved the highest R² at 0.4604 (adj R² = 0.4353), RMSE = 107.37 sec, MAE = 77.47 sec on route-level data (n=226, p=10), with F-statistic = 18.34 (p < 0.001). `route_historical_avg_delay` was the dominant feature at 43.4% importance. Demographic features ranked last (<1% combined), likely reflecting absorption by route-level fixed effects rather than absence of equity disparity.
 
@@ -416,5 +433,5 @@ Pearson correlation matrix across all 8 numeric features and `avg_delay`. `route
 | Name | BU Email | Contributions |
 |---|---|---|
 | Baria Mustafa | bmustafa@bu.edu | XGBoost modeling pipeline, feature engineering (temporal, stop-level, demographic), adjusted R² overfitting analysis, Title VI equity visualization, SHAP interpretability |
-| Primah Muwanga | pmuwanga@bu.edu | *[Primah: fill in — e.g., linear regression baseline, Ordinary Least Sqaures design matrix, Partial F-test analysis, correlation heatmap, R² comparison visualization]* |
+| Primah Muwanga | pmuwanga@bu.edu | Linear regression pipeline (`merge_for_regression.py`, `lin_reg_final.py`, `regression_viz.py`); `mbta_final.csv` rebuild from arrival data + stops file; trip-level OLS with route fixed effects (n = 325,924, p = 41); naive baseline + demographics-only + full-model comparison; partial F-test for secondary-goal hypothesis; multicollinearity diagnostics with single-predictor sensitivity refits; five regression diagnostic visualizations (coefficient plot, route-level demographics scatter, predicted vs. actual, residual histogram, alone-vs-joint coefficients) | |
 | Amira Zuniga | azuniga@bu.edu | *[Amira: fill in — e.g., random forest model, route-level aggregation, feature engineering, feature importance analysis, correlation heatmap]* |
