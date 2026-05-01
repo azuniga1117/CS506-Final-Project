@@ -68,7 +68,7 @@ This project updates that analysis using three complementary machine learning ap
 | **Team (Primary)** | Quantify the reliability gap by calculating average delay time and wait-time variance for the 15 target bus routes (28, 23, 111, 15, and others), identifying which routes fall more than 20% below MBTA service standards |
 | **Team (Secondary)** | Correlate bus performance metrics (delays, travel speed, frequency) with neighborhood demographics (race, income, vehicle ownership) to determine if a statistically significant disparity persists in the time tax paid by low-income and minority residents |
 | **XGBoost (Baria)** | Predict `avg_delay_min` at the route × stop × hour × day-of-week level with R² > 0.5 on held-out data; determine via forward adjusted-R² selection whether Title VI demographic features improve model fit after controlling for operational factors |
-| **Linear Regression (Primah)** | Establish whether demographic factors (Title VI minority %, low-income %) and operating factors (hour, rush hour, previous delay, route) significantly explain trip-level delay via OLS; quantify how much variance each group adds using an F-test (α = 0.05) |
+| **Linear Regression (Primah)** | Establish whether demographic factors (Title VI minority %, low-income %) and operating factors (hour, rush hour, previous delay, route) significantly explain trip-level delay via OLS; quantify how much variance the demographic group adds using a partial F-test (α = 0.05) |
 | **Random Forest (Amira)** | Capture non-linear interactions between route characteristics, time-of-day, and demographics using a Random Forest Regressor on route-level aggregated data, targeting R² > 0.40; quantify whether demographic features contribute meaningfully to feature importance relative to operational predictors |
 
 ---
@@ -91,8 +91,7 @@ The MBTA arrival/departure dataset was downloaded as a bulk CSV. Due to its ~26M
 *See `XGBoost-5.ipynb` §1 (stratified sampler) and §2a (demographic loader).*
 
 **Linear Regression** *(Primah Muwanga)*  
-The trip-level CSV was loaded with `pd.read_csv()`, producing 325,924 rows across 11 columns. Mixed-type warnings on `route_id` were resolved by specifying dtype options. No additional sampling was applied. Demographic columns (`pct_minority`, `pct_lowincome`) were pre-merged at the route level from the Passenger Survey before loading.  
-*See linear regression notebook.*
+TThe trip-level CSV `trip_level_merged.csv` was loaded with `pd.read_csv()`, producing 325,924 rows across 11 columns. No additional sampling was applied at this stage — the upstream 800,000-row uniform random sample of `mbta_final.csv` (drawn in `merge_for_regression.py` with `np.random.choice` and a fixed seed of 42) yields the trip-level dataset directly. Demographic columns (`pct_minority`, `pct_lowincome`) were pre-merged at the route level from the Passenger Survey, with grouped survey labels (e.g., `'114, 116, & 117'`) regex-expanded into individual route rows before the join. See `merge_for_regression.py` for the upstream pipeline and `lin_reg_final.py` for the regression load step.
 
 **Random Forest** *(Amira Zuniga)*  
 The dataset was aggregated to the route level from the shared MBTA trip CSV, producing 226 observations. Route-level aggregation was chosen to match the granularity of the demographic features, which are only available at the route level. Engineered features (`route_historical_avg_delay`, `headway_deviation`, `stop_position_pct`) were computed during preprocessing.  
@@ -114,12 +113,12 @@ The dataset was aggregated to the route level from the shared MBTA trip CSV, pro
 
 ### Linear Regression *(Primah Muwanga)*
 
-1. **NaN removal** — rows with any missing values dropped; all 325,924 rows were retained, confirming no missing values in the pre-merged file.
-2. **Categorical encoding** — `route_id`, `direction_id`, `neighborhood` one-hot encoded via `pd.get_dummies`, producing 35 binary dummy columns (design matrix: n=325,924, p=41). One-hot chosen over label encoding because OLS treats predictor values as ordered.
-3. **Multicollinearity check** — Pearson correlation matrix computed on all numeric predictors. `pct_minority` and `pct_lowincome` showed r = 0.815 — both retained because they capture distinct policy dimensions (race vs. income), but their coefficients must be interpreted jointly.
-4. **Response variable** — `delay_seconds` used directly as the response (trip-level, in seconds). No clipping applied to preserve coefficient interpretability.
+1. **NaN removal** — `dropna(subset=[response] + predictors + ["route_id"])` applied; all 325,924 rows retained, confirming no missing values in the pre-merged file. (Missingness was already handled upstream in `merge_for_regression.py`, which dropped first-trip-per-route rows lacking a `prev_delay` value, and at the route level for any route missing demographics.)
+2. **Categorical encoding** — `route_id` one-hot encoded via `pd.get_dummies(..., drop_first=True)`, producing 35 binary dummy columns (design matrix: n = 325,924, p = 41 = 6 numeric + 35 dummies). One-hot was chosen over label encoding because OLS interprets numeric predictor values as continuous; label codes (e.g., route 28 = 28, route 39 = 39) would impose an arbitrary linear relationship across routes that doesn't correspond to anything real. `neighborhood` was excluded as a predictor entirely due to a 47.4% Unknown rate in the source data; `direction_id` was used only as a grouping variable for the `prev_delay` lag construction, not as a predictor.
+3. **Multicollinearity check** — Pearson correlation matrix computed on all numeric predictors. `pct_minority` and `pct_lowincome` showed r = 0.815. Both were retained in the full model because they capture distinct policy dimensions (race vs. income), but their joint coefficients are unstable and were not interpreted individually; instead, single-predictor refits with operating controls were used to recover stable coefficient estimates (Visualization 5).
+4. **Response variable** — `delay_seconds` clipped to ±3600 seconds upstream in `merge_for_regression.py`, removing implausible values from data entry errors and cancelled trips. The coefficient unit (seconds of delay per unit of predictor) remains directly interpretable.
 
-*See linear regression notebook for cleaning and design matrix construction.*
+*See `lin_reg_final.py` for design matrix construction and `merge_for_regression.py` for upstream cleaning.*
 
 ### Random Forest *(Amira Zuniga)*
 
@@ -170,12 +169,12 @@ Historical delay features are computed as `transform('mean')` over the full samp
 | `hour` | Hour of departure (0–23) | Temporal congestion signal; r = 0.066 with delay |
 | `day_of_week` | Day of week (0–6) | Weekday/weekend service pattern control |
 | `is_rush_hour` | Binary: 1 if AM or PM peak | Peak-period delay amplification; coefficient = +39.5 sec |
-| `prev_delay` | Delay of preceding trip on same route (sec) | Strongest numeric predictor — cascading delay signal; r = 0.206 |
-| `route_id` (dummies) | One-hot encoded route ID (35 vars) | Route fixed effects — absorbs chronic route-level delay |
-| `direction_id` (dummies) | One-hot encoded direction | Asymmetric congestion by direction |
-| `neighborhood` (dummies) | One-hot encoded neighborhood | Geographic effects on delay |
+| `prev_delay` | Delay of preceding trip on same route+direction (sec) | Strongest numeric predictor — cascading delay signal; r = 0.206 |
+| `route_id` (dummies) | One-hot encoded route ID (35 dummies after `drop_first=True`) | Route fixed effects — absorbs chronic route-level delay |
 
-The six numeric predictors entered the model without scaling (OLS coefficients are interpretable in original units — seconds per unit change). Design matrix: n=325,924, p=41. No interaction terms added; intentionally kept as linear baseline.
+The six numeric predictors entered the model without scaling — OLS coefficients are interpretable in original units (seconds per unit change). Design matrix: n = 325,924, p = 41 (6 numeric + 35 dummies). No interaction terms added; intentionally kept as a linear baseline.
+
+`neighborhood` was excluded as a predictor due to a 47.4% Unknown rate in the source data; `direction_id` was used only as a grouping variable for the `prev_delay` lag construction, not as a predictor.
 
 ### Random Forest *(Amira Zuniga)*
 
@@ -256,21 +255,21 @@ The six numeric predictors entered the model without scaling (OLS coefficients a
 
 **Model:** OLS Linear Regression — provides interpretable coefficient estimates with direct statistical significance testing. The F-test structure allows formal testing of whether demographics alone explain delay, and by how much operating + route factors improve fit.
 
-**Training:** Two OLS models fit on the full 325,924-row dataset using numpy matrix operations (XᵀX)⁻¹Xᵀy. No train/test split — focus was coefficient estimation and hypothesis testing rather than prediction. Demographics-only model (p=2) fit first, then full model (p=41). F-statistic tests H₀: all coefficients = 0.
+**Training:** Two OLS models fit on the full 325,924-row dataset using `numpy.linalg.lstsq` to solve the normal equations (more numerically stable than `(XᵀX)⁻¹Xᵀy` when the design matrix is wide or near-singular). No train/test split — the focus was coefficient estimation and hypothesis testing rather than prediction. Demographics-only model (p = 2) fit first, then full model (p = 41). The overall F-statistic tests H₀: all slope coefficients = 0; a separate partial F-test (in `regression_viz.py`) tests the secondary-goal hypothesis that demographics add no information beyond operating factors.
 
-**Evaluation:** R², adjusted R², RMSE (in seconds), F-statistic (p-value). Demographics-only model serves as equity-focused baseline; R² gain measures how much operating/route factors add.
+**Evaluation:** R², adjusted R², RMSE (in seconds), F-statistic with p-value. The demographics-only model serves as an equity-focused baseline; the R² gain from operating + route fixed effects measures how much trip-to-trip variance is explained by factors outside the demographic question.
 
 **Results:**
 
 | Model | Metric | Score |
 |---|---|---|
-| Linear Regression — Demographics only (p=2) | R² | 0.0172 |
-| Linear Regression — Demographics only (p=2) | Adj R² | 0.0172 |
-| Linear Regression — Demographics only (p=2) | RMSE | 369.18 sec |
-| Linear Regression — Full model (p=41) | R² | 0.0893 |
-| Linear Regression — Full model (p=41) | Adj R² | 0.0891 |
-| Linear Regression — Full model (p=41) | RMSE | 355.42 sec |
-| Linear Regression — Full model (p=41) | F-stat (p-value) | 778.98 (p < 0.001) |
+| Demographics only (p = 2) | R² | 0.0172 |
+| Demographics only (p = 2) | Adj R² | 0.0172 |
+| Demographics only (p = 2) | RMSE | 369.18 sec |
+| Full model (p = 41) | R² | 0.0893 |
+| Full model (p = 41) | Adj R² | 0.0891 |
+| Full model (p = 41) | RMSE | 355.42 sec |
+| Full model (p = 41) | F-stat (p-value) | 779.0 (p < 0.001) |
 | R² gain: operating + route over demographics alone | Δ R² | **+7.20 pp** |
 
 **Key coefficients (full model):**
@@ -283,15 +282,16 @@ The six numeric predictors entered the model without scaling (OLS coefficients a
 | `hour` | +3.62 sec |
 | `day_of_week` | +2.76 sec |
 | `is_rush_hour` | +39.49 sec |
-| `prev_delay` | +0.147 sec |
+| `prev_delay` | +0.15 sec |
 
 **Limitations:**
-- Full model explains only 8.9% of trip-level delay variance — weather, incidents, real-time traffic are unobserved
-- Multicollinearity between `pct_minority` and `pct_lowincome` (r = 0.815) makes individual coefficients unstable; the negative coefficient on `pct_minority` should not be interpreted in isolation
-- OLS assumes homoscedasticity — delay data is right-skewed and likely heteroscedastic, so standard errors may be underestimated
-- No interaction terms; model cannot detect whether rush-hour penalties differ by demographic group
 
-*See linear regression notebook for full implementation and output.*
+- Full model explains only 8.9% of trip-level delay variance — weather, incidents, and real-time traffic are unobserved
+- Multicollinearity between `pct_minority` and `pct_lowincome` (r = 0.815) makes the joint coefficients unstable; in particular, the `pct_lowincome` coefficient flips sign between the alone fit (−563.5 sec/unit) and the joint fit (+50.7), and neither demographic coefficient should be interpreted in isolation from the alone-vs-joint comparison (Visualization 5)
+- The residual distribution is heavy-tailed (closer to Laplace than Normal) rather than homoscedastic, so standard errors are approximate and the model fits typical trips well but extreme delays poorly (visible in the predicted-vs-actual plot)
+- No interaction terms; model cannot detect whether rush-hour penalties or previous-delay propagation differ by demographic group
+
+*See `lin_reg_final.py` for full implementation and output.*
 
 ---
 
@@ -333,7 +333,7 @@ The six numeric predictors entered the model without scaling (OLS coefficients a
 | Random Forest (p=10, n=226) | 77.47 sec | 107.37 sec | 0.4604 (adj: 0.4353) | Route-level; highest R²; `route_historical_avg_delay` dominates at 43.4%; demographic features < 1% importance |
 | XGBoost | 107.76 sec | 165 sec | 0.616 (adj: 0.6110) | Route-stop-hour level; SHAP interpretability; forward adjusted-R² overfitting check |
 
-> ⚠️ **Note on comparability:** The three models operate at different levels of aggregation (trip-level vs. route-level vs. route-stop-hour-level), so their R² and RMSE values are not directly comparable — each model explains variance at its own unit of analysis. The key cross-model finding is that demographic features rank low in importance across all three models, consistent with the interpretation that delay is structurally embedded in route operations rather than simply correlated with ridership demographics.
+> ⚠️ **Note on comparability:** Models are at different aggregation levels — Linear Regression at the trip level (n = 325,924 individual arrivals), Random Forest at the route level (n = 226 routes), and XGBoost at the route-stop-hour level. R² values are not directly comparable across rows because each model's SST is computed over a different unit of analysis. Trip-level models face structurally higher unexplainable variance (driver, traffic, passenger noise) than aggregate models, so the lower Linear Regression R² reflects a harder prediction task, not a worse model.
 
 *[Team: add 2–3 sentences here summarizing which model performed best for its task and the overall equity conclusion.]*
 
@@ -416,5 +416,5 @@ Pearson correlation matrix across all 8 numeric features and `avg_delay`. `route
 | Name | BU Email | Contributions |
 |---|---|---|
 | Baria Mustafa | bmustafa@bu.edu | XGBoost modeling pipeline, feature engineering (temporal, stop-level, demographic), adjusted R² overfitting analysis, Title VI equity visualization, SHAP interpretability |
-| Primah Muwanga | pmuwanga@bu.edu | *[Primah: fill in — e.g., linear regression baseline, OLS design matrix, F-test analysis, correlation heatmap, R² comparison visualization]* |
+| Primah Muwanga | pmuwanga@bu.edu | *[Primah: fill in — e.g., linear regression baseline, Ordinary Least Sqaures design matrix, Partial F-test analysis, correlation heatmap, R² comparison visualization]* |
 | Amira Zuniga | azuniga@bu.edu | *[Amira: fill in — e.g., random forest model, route-level aggregation, feature engineering, feature importance analysis, correlation heatmap]* |
