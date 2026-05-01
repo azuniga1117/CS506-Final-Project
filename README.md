@@ -91,7 +91,7 @@ The MBTA arrival/departure dataset was downloaded as a bulk CSV. Due to its ~26M
 *See `XGBoost-5.ipynb` §1 (stratified sampler) and §2a (demographic loader).*
 
 **Linear Regression** *(Primah Muwanga)*  
-TThe trip-level CSV `trip_level_merged.csv` was loaded with `pd.read_csv()`, producing 325,924 rows across 11 columns. No additional sampling was applied at this stage — the upstream 800,000-row uniform random sample of `mbta_final.csv` (drawn in `merge_for_regression.py` with `np.random.choice` and a fixed seed of 42) yields the trip-level dataset directly. Demographic columns (`pct_minority`, `pct_lowincome`) were pre-merged at the route level from the Passenger Survey, with grouped survey labels (e.g., `'114, 116, & 117'`) regex-expanded into individual route rows before the join. See `merge_for_regression.py` for the upstream pipeline and `lin_reg_final.py` for the regression load step.
+TThe trip-level CSV `trip_level_merged.csv` was loaded with `pd.read_csv()`, producing 325,924 rows across 11 columns. No additional sampling was applied at this stage, the upstream 800,000-row uniform random sample of `mbta_final.csv` (drawn in `merge_for_regression.py` with `np.random.choice` and a fixed seed of 42) yields the trip-level dataset directly. Demographic columns (`pct_minority`, `pct_lowincome`) were pre-merged at the route level from the Passenger Survey, with grouped survey labels (e.g., `'114, 116, & 117'`) regex-expanded into individual route rows before the join. See `merge_for_regression.py` for the upstream pipeline and `lin_reg_final.py` for the regression load step.
 
 **Random Forest** *(Amira Zuniga)*  
 The dataset was aggregated to the route level from the shared MBTA trip CSV, producing 226 observations. Route-level aggregation was chosen to match the granularity of the demographic features, which are only available at the route level. Engineered features (`route_historical_avg_delay`, `headway_deviation`, `stop_position_pct`) were computed during preprocessing.  
@@ -381,27 +381,22 @@ Side-by-side scatter plots: mean `avg_delay_min` vs. Title VI Low-Income % (left
 **1. Coefficient Plot — Numeric Predictors**
 Horizontal bar chart of the six numeric-predictor coefficients from the full route-FE model, color-coded by sign (red = positive, blue = negative) with values labeled in seconds of delay per unit increase. Shows `is_rush_hour` (+39.5 sec) and the joint demographic coefficients as the visually dominant effects, while operating coefficients like `hour` (+3.6) and `prev_delay` (+0.15) are smaller per unit but cumulatively meaningful across their ranges.
 
-<img width="900" height="500" alt="viz_coefficients" src="PASTE_URL_1_HERE" />
+<img width="972" height="532" alt="Image" src="https://github.com/user-attachments/assets/6a33622e-43ae-4990-91f8-c7192997030c" />
 
 **2. Demographics vs. Average Delay — Route-Level Scatter**
 Two side-by-side scatter plots, one route per dot, with `pct_minority` and `pct_lowincome` on the x-axes and route-level mean delay on the y-axis. Red OLS fit lines with shaded 95% confidence bands. Both relationships have *negative* slopes — routes serving more minority and low-income riders have lower average delays at the route level — directly contradicting the naive "minority routes are slower" prediction. Headline equity finding for the linear regression.
 
-<img width="1300" height="500" alt="viz_demographics_scatter" src="PASTE_URL_2_HERE" />
+<img width="1409" height="541" alt="Image" src="https://github.com/user-attachments/assets/ec80aebf-c732-437d-b81a-9b4fa66c9be5" />
 
-**3. Predicted vs. Actual Trip Delay**
-Scatter of 5,000 randomly sampled trips with actual delay on the x-axis, model-predicted delay on the y-axis, and the y = x diagonal in red. Title labels both R² (0.089) and RMSE (355 sec). The central cluster sits roughly along the diagonal — typical trips are reasonably well predicted — but the model fails on extreme delays in both directions: heavily late buses (>1000 seconds actual) are predicted near zero. Visual confirmation that the model is calibrated for typical service, not the tail events most consequential for rider equity.
-
-<img width="800" height="700" alt="viz_pred_vs_actual" src="PASTE_URL_3_HERE" />
-
-**4. Residual Distribution**
+**3. Residual Distribution**
 Histogram of residuals (actual − predicted) with KDE overlay, x-axis clipped to ±1500 to show the bulk distribution. Residuals are roughly symmetric around zero (supporting unbiasedness of OLS estimates) but exhibit heavy tails consistent with a Laplace rather than Normal distribution. Heavy tails serve as a caveat on the parametric inference assumptions underlying OLS standard errors and p-values.
 
-<img width="900" height="500" alt="viz_residuals" src="PASTE_URL_4_HERE" />
+<img width="972" height="532" alt="Image" src="https://github.com/user-attachments/assets/dc03f456-08de-4b9d-8eec-2481ec9fdb1e" />
 
-**5. Demographic Coefficients — Alone vs. Joint Fit**
+**4. Demographic Coefficients — Alone vs. Joint Fit**
 Grouped bar chart comparing each demographic coefficient when fit alone (blue, with operating controls only) versus jointly with the other demographic (red). Direct evidence of multicollinearity (r = 0.815): `pct_lowincome` shifts from −504 sec/unit alone to −449 jointly, and `pct_minority` shifts from −238 alone to −37 jointly. The two variables share enough explanatory power that neither joint coefficient is interpretable in isolation — the "alone" estimates are the stable, defensible numbers and are what's reported in the Summary of Results.
 
-<img width="900" height="450" alt="viz_single_vs_joint" src="PASTE_URL_5_HERE" />
+<img width="972" height="477" alt="Image" src="https://github.com/user-attachments/assets/0eea894b-c680-4e40-80cb-f377a4f5f4b5" />
 ---
 
 ### Random Forest Visualizations *(Amira Zuniga)*
